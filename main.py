@@ -1,5 +1,3 @@
-from email.policy import default
-
 import pygame
 
 # Initialize Pygame
@@ -22,6 +20,7 @@ FPS = 60
 pygame.font.init()
 font = pygame.font.Font(None, 36)  # Use default font and size 36
 
+grenade_img = pygame.image.load('img/player/grenade.png')
 # Background color
 BG = (144, 201, 120)
 
@@ -54,7 +53,9 @@ class Soldier(pygame.sprite.Sprite):
         self.alive = True
         self.ammo = 30
         self.health = 100
+        self.max_health = self.health
         self.death_animation_played = False
+        self.grenades = 3  # Initialize with 3 grenades
 
         # Load all images for the running animation
         img = pygame.image.load(f'img/{self.char_type}/run.png')
@@ -85,11 +86,18 @@ class Soldier(pygame.sprite.Sprite):
             self.image = self.static_image
 
         # Load all images for the death animation
-        img = pygame.image.load(f'img/{self.char_type}/death.png')
-        for i in range(12):
-            frame = img.subsurface(pygame.Rect(i * img.get_width() // 12, 0, img.get_width() // 12, img.get_height()))
-            frame = pygame.transform.scale(frame, (int(frame.get_width() * scale), int(frame.get_height() * scale)))
-            self.death_list.append(frame)
+        if self.char_type == 'player':
+            img = pygame.image.load(f'img/{self.char_type}/death.png')
+            for i in range(10):
+                frame = img.subsurface(pygame.Rect(i * img.get_width() // 10, 0, img.get_width() // 10, img.get_height()))
+                frame = pygame.transform.scale(frame, (int(frame.get_width() * scale), int(frame.get_height() * scale)))
+                self.death_list.append(frame)
+        else:
+            img = pygame.image.load(f'img/{self.char_type}/death.png')
+            for i in range(12):
+                frame = img.subsurface(pygame.Rect(i * img.get_width() // 12, 0, img.get_width() // 12, img.get_height()))
+                frame = pygame.transform.scale(frame, (int(frame.get_width() * scale), int(frame.get_height() * scale)))
+                self.death_list.append(frame)
 
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
@@ -204,8 +212,15 @@ class Bullet(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
 
-    # Update the bullet's position and animation
     def update(self):
+        # Move the bullet
+        self.rect.x += self.direction * self.speed
+
+        # Check if the bullet is off the screen
+        if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
+            self.kill()
+
+        # Update animation
         ANIMATION_COOLDOWN = 50
         if pygame.time.get_ticks() - self.update_time > ANIMATION_COOLDOWN:
             self.update_time = pygame.time.get_ticks()
@@ -214,12 +229,41 @@ class Bullet(pygame.sprite.Sprite):
                 self.frame_index = 0
             self.image = self.animation_list[self.frame_index]
 
-        self.rect.x += (self.direction * self.speed)
-        if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
-            print(f"Bullet out of bounds: {self.rect}")
-            self.kill()
+class Grenade(pygame.sprite.Sprite):
+    def __init__(self, x, y, direction):
+        pygame.sprite.Sprite.__init__(self)
+        self.timer = 100
+        self.vel_y = -11
+        self.speed = 7
+        self.image = grenade_img
+        self.rect = self.image.get_rect()
+        self.rect.center = (x, y)
+        self.direction = direction
 
-        screen.blit(self.image, self.rect)
+    def update(self):
+        # Apply gravity
+        self.vel_y += 0.75
+        dx = self.direction * self.speed
+        dy = self.vel_y
+
+        # Check for collision with the ground
+        if self.rect.bottom + dy > SCREEN_HEIGHT - 50:
+            dy = SCREEN_HEIGHT - 50 - self.rect.bottom
+            self.speed = 0
+
+        # Update grenade position
+        self.rect.x += dx
+        self.rect.y += dy
+
+        # Countdown timer
+        self.timer -= 1
+        if self.timer <= 0:
+            self.kill()
+            # Check for collision with player or enemy
+            if pygame.sprite.collide_rect(self, player):
+                player.take_damage(100)
+            if pygame.sprite.collide_rect(self, enemy):
+                enemy.take_damage(100)
 
 # Create player and enemy soldiers
 player = Soldier('player', 200, 200, 3, 5)
@@ -232,6 +276,8 @@ bullet_group = pygame.sprite.Group()
 moving_left = False
 moving_right = False
 jumping = False
+# Group to manage grenades
+grenade_group = pygame.sprite.Group()
 
 # Main game loop
 run = True
@@ -247,6 +293,10 @@ while run:
     bullet_group.update()
     bullet_group.draw(screen)
 
+    # Update and draw grenades
+    grenade_group.update()
+    grenade_group.draw(screen)
+
     # Check for bullet collisions
     for bullet in bullet_group:
         if bullet.char_type == 'player':
@@ -260,7 +310,8 @@ while run:
                 player.take_damage(10)
                 bullet.kill()
 
-    # Update enemy animation
+    # Update player and enemy animations
+    player.update_animation()
     enemy.update_animation()
 
     # Draw ammo count
@@ -279,6 +330,11 @@ while run:
                 jumping = True
             if event.key == pygame.K_ESCAPE:
                 run = False
+            if event.key == pygame.K_g and player.grenades > 0:
+                grenade = Grenade(player.rect.centerx, player.rect.centery, player.direction)
+                grenade_group.add(grenade)
+                player.grenades -= 1
+                print(f"Grenade thrown: {grenade.rect}")
 
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_a:
