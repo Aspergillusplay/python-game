@@ -38,25 +38,33 @@ BG = (144, 201, 120)
 
 # Load images
 bullet_img = pygame.image.load('img/icons/bullet.png')
-bullet_img = pygame.transform.scale(bullet_img, (bullet_img.get_width() * 1.5, bullet_img.get_height() * 1.5))
+bullet_img = pygame.transform.scale(bullet_img, (bullet_img.get_width() * 2, bullet_img.get_height() * 2))
+bullet_img_transparent = bullet_img.copy()
+bullet_img_transparent.set_alpha(100)
 
 grenade_img = pygame.image.load('img/icons/grenade.png')
-grenade_img = pygame.transform.scale(grenade_img, (grenade_img.get_width() * 1.2, grenade_img.get_height() * 1.2))
+grenade_img = pygame.transform.scale(grenade_img, (grenade_img.get_width() * 1.5, grenade_img.get_height() * 1.5))
+grenade_img_transparent = grenade_img.copy()
+grenade_img_transparent.set_alpha(100)
 
-def draw_ammo(ammo):
-    for i in range(ammo):
-        screen.blit(bullet_img, (10 + i * (bullet_img.get_width() - 2), 10))
+def draw_ammo(ammo, max_ammo):
+    for i in range(max_ammo):
+        if i < ammo:
+            screen.blit(bullet_img, (10 + i * (bullet_img.get_width() - 2), 10))
+        else:
+            screen.blit(bullet_img_transparent, (10 + i * (bullet_img.get_width() - 2), 10))
 
-def draw_grenades(grenades):
-    for i in range(grenades):
-        screen.blit(grenade_img, (10 + i * (grenade_img.get_width() + 5), 30))
-
+def draw_grenades(grenades, max_grenades):
+    for i in range(max_grenades):
+        if i < grenades:
+            screen.blit(grenade_img, (10 + i * (grenade_img.get_width() + 5), 35))
+        else:
+            screen.blit(grenade_img_transparent, (10 + i * (grenade_img.get_width() + 5), 35))
 # Function to draw the background
 def draw_bg():
     screen.fill(BG)
 
 
-# Class representing a soldier character
 class Soldier(pygame.sprite.Sprite):
     def __init__(self, char_type, x, y, scale, speed):
         pygame.sprite.Sprite.__init__(self)
@@ -76,10 +84,12 @@ class Soldier(pygame.sprite.Sprite):
         self.vel_y = 0
         self.alive = True
         self.ammo = 20
+        self.max_ammo = 20
         self.health = 100
         self.max_health = self.health
         self.death_animation_played = False
-        self.grenades = 3  # Initialize with 3 grenades
+        self.grenades = 3
+        self.max_grenades = 3
 
         # Load all images for the running animation
         img = pygame.image.load(f'img/{self.char_type}/run.png')
@@ -133,18 +143,21 @@ class Soldier(pygame.sprite.Sprite):
             self.update_time = pygame.time.get_ticks()
             self.frame_index += 1
             if self.alive:
-                if self.jumping:
-                    if self.frame_index >= len(self.jump_list):
-                        self.frame_index = 0
-                    self.image = self.jump_list[self.frame_index]
-                elif self.char_type == 'player' and not self.jumping and not self.in_air and not (moving_left or moving_right):
-                    if self.frame_index >= len(self.static_list):
-                        self.frame_index = 0
-                    self.image = self.static_list[self.frame_index]
+                if self.char_type == 'player':
+                    if self.jumping:
+                        if self.frame_index >= len(self.jump_list):
+                            self.frame_index = 0
+                        self.image = self.jump_list[self.frame_index]
+                    elif not self.jumping and not self.in_air and not (moving_left or moving_right):
+                        if self.frame_index >= len(self.static_list):
+                            self.frame_index = 0
+                        self.image = self.static_list[self.frame_index]
+                    else:
+                        if self.frame_index >= len(self.animation_list):
+                            self.frame_index = 0
+                        self.image = self.animation_list[self.frame_index]
                 else:
-                    if self.frame_index >= len(self.animation_list):
-                        self.frame_index = 0
-                    self.image = self.animation_list[self.frame_index]
+                    self.image = self.static_image
             else:
                 if self.frame_index >= len(self.death_list):
                     self.death_animation_played = True
@@ -234,11 +247,17 @@ class ItemBox(pygame.sprite.Sprite):
                     print(f"Player health: {player.health}")
                     self.kill()
             elif self.item_type == 'Grenade':
-                player.grenades += 3
-                self.kill()
+                if player.grenades < player.max_grenades:
+                    player.grenades += 3
+                    if player.grenades > player.max_grenades:
+                        player.grenades = player.max_grenades
+                    self.kill()
             elif self.item_type == 'Ammo':
-                player.ammo += 20
-                self.kill()
+                if player.ammo < player.max_ammo:
+                    player.ammo += 20
+                    if player.ammo > player.max_ammo:
+                        player.ammo = player.max_ammo
+                    self.kill()
 
 
 class HealthBar:
@@ -364,7 +383,7 @@ class Explosion(pygame.sprite.Sprite):
 # Create player and enemy soldiers
 player = Soldier('player', 200, 200, 3, 5)
 enemy = Soldier('enemy', 400, 200, 3, 5)
-health_bar = HealthBar(10, 50, player.health, player.max_health)
+health_bar = HealthBar(10, 65, player.health, player.max_health)
 # Group to manage bullets
 bullet_group = pygame.sprite.Group()
 
@@ -404,6 +423,7 @@ while run:
     bullet_group.update()
     bullet_group.draw(screen)
 
+
     # Update and draw grenades
     grenade_group.update()
     grenade_group.draw(screen)
@@ -433,10 +453,9 @@ while run:
     player.update_animation()
     enemy.update_animation()
 
-    # Draw ammo count
-    draw_ammo(player.ammo)
-    # Draw grenades count
-    draw_grenades(player.grenades)
+    # Draw ammo and grenade count
+    draw_ammo(player.ammo, player.max_ammo)
+    draw_grenades(player.grenades, player.max_grenades)
 
     # Event handling
     for event in pygame.event.get():
