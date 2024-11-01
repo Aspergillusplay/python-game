@@ -105,7 +105,7 @@ class Soldier(pygame.sprite.Sprite):
         self.move_limit = 100
         self.last_dropped_item = None
 
-        # Параметры патрулирования
+        # Initialize patrol start and end points
         self.patrol_start = x - 200
         self.patrol_end = x + 200
         self.patrol_direction = 1
@@ -125,7 +125,7 @@ class Soldier(pygame.sprite.Sprite):
                 frame = pygame.transform.scale(frame, (int(frame.get_width() * scale), int(frame.get_height() * scale)))
                 self.jump_list.append(frame)
 
-        # Load all images for the static animation (only for player)
+        # Load all images for the static animation
         if self.char_type == 'player':
             img = pygame.image.load(f'img/{self.char_type}/static.png')
             for i in range(5):
@@ -134,7 +134,9 @@ class Soldier(pygame.sprite.Sprite):
                 self.static_list.append(frame)
             self.image = self.static_list[self.frame_index]
         else:
-            self.image = self.animation_list[self.frame_index]
+            img = pygame.image.load(f'img/{self.char_type}/static.png')
+            self.static_image = pygame.transform.scale(img, (int(img.get_width() * scale), int(img.get_height() * scale)))
+            self.image = self.static_image
 
         # Load all images for the death animation
         if self.char_type == 'player':
@@ -160,6 +162,7 @@ class Soldier(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
 
+        self.health_bar = HealthBar(self.rect.x - 50, self.rect.y - 20, self.health, self.max_health)
     def shoot(self):
         if self.shoot_cooldown == 0 and self.ammo > 0:
             self.shoot_cooldown = 20  # Cooldown period before the next shot
@@ -226,9 +229,12 @@ class Soldier(pygame.sprite.Sprite):
                         self.frame_index = 0
                     self.image = self.animation_list[self.frame_index]
                 else:
-                    if self.frame_index >= len(self.static_list):
-                        self.frame_index = 0
-                    self.image = self.static_list[self.frame_index]
+                    if self.char_type == 'player':
+                        if self.frame_index >= len(self.static_list):
+                            self.frame_index = 0
+                        self.image = self.static_list[self.frame_index]
+                    else:
+                        self.image = self.static_image  # Use the preloaded static image for the enemy
 
             else:  # Enemy is dead
                 if self.frame_index >= len(self.death_list):
@@ -251,15 +257,13 @@ class Soldier(pygame.sprite.Sprite):
                     dx = -self.speed
                     self.flip = True
                     self.direction = -1
-                    self.update_animation()  # Update animation when moving left
                 if moving_right:
                     dx = self.speed
                     self.flip = False
                     self.direction = 1
-                    self.update_animation()  # Update animation when moving right
-
             else:
-                self.update_animation()  # Update animation if standing still
+                self.moving_left = False
+                self.moving_right = False
 
             if jumping and not self.jumping and not self.in_air:
                 self.jumping = True
@@ -278,6 +282,8 @@ class Soldier(pygame.sprite.Sprite):
 
             self.rect.x += dx
             self.rect.y += dy
+
+            self.update_animation()  # Update animation after movement
 
 
     def draw(self):
@@ -305,6 +311,18 @@ class Soldier(pygame.sprite.Sprite):
                     self.last_dropped_item = item_type
                     item_box = ItemBox(item_type, self.rect.centerx, self.rect.centery)
                     item_box_group.add(item_box)
+
+    def update(self):
+        self.health_bar.x = self.rect.x
+        if self.char_type == 'enemy':
+            self.health_bar.y = self.rect.y - 20
+            self.health_bar.x = self.rect.x + 2
+            self.health_bar.scale = 0.5
+        else:
+            self.health_bar.y = self.rect.y - 20
+            self.health_bar.x = self.rect.x + 2
+            self.health_bar.scale = 1
+        self.health_bar.draw(self.health)
 
 
 
@@ -339,20 +357,21 @@ class ItemBox(pygame.sprite.Sprite):
                     self.kill()
 
 class HealthBar:
-    def __init__(self, x, y, health, max_health):
+    def __init__(self, x, y, health, max_health, scale=1):
         self.x = x
         self.y = y
         self.health = health
         self.max_health = max_health
+        self.scale = scale
 
     def draw(self, health):
         self.health = health
-        # Draw health bar
         ratio = self.health / self.max_health
-        pygame.draw.rect(screen, (0, 0, 0), (self.x - 2, self.y - 2, 154, 24))
-        pygame.draw.rect(screen, (255, 0, 0), (self.x, self.y, 150, 20))
-        pygame.draw.rect(screen, (0, 255, 0), (self.x, self.y, 150 * ratio, 20))
-
+        width = 150 * self.scale
+        height = 20 * self.scale
+        pygame.draw.rect(screen, (0, 0, 0), (self.x - 2, self.y - 2, width + 4, height + 4))
+        pygame.draw.rect(screen, (255, 0, 0), (self.x, self.y, width, height))
+        pygame.draw.rect(screen, (0, 255, 0), (self.x, self.y, width * ratio, height))
 
 # Class representing a bullet
 class Bullet(pygame.sprite.Sprite):
@@ -470,11 +489,11 @@ class Explosion(pygame.sprite.Sprite):
 enemy_group = pygame.sprite.Group()
 
 # Create player and enemy soldiers
-player = Soldier('player', 200, 200, 3, 5)
-enemy1 = Soldier('enemy', 300, 200, 3, 5)
-enemy2 = Soldier('enemy', 400, 200, 3, 5)
-enemy3 = Soldier('enemy', 500, 200, 3, 5)
-enemy4 = Soldier('enemy', 600, 200, 3, 5)
+player = Soldier('player', 200, 800, 3, 5)
+enemy1 = Soldier('enemy', 300, 800, 3, 5)
+enemy2 = Soldier('enemy', 400, 800, 3, 5)
+enemy3 = Soldier('enemy', 500, 800, 3, 5)
+enemy4 = Soldier('enemy', 600, 800, 3, 5)
 
 # Add enemies to the group
 enemy_group.add(enemy1)
@@ -523,6 +542,7 @@ while run:
         enemy.update_animation()
         enemy.draw()
         enemy.update()
+        enemy.health_bar.draw(enemy.health)
 
     # Update and draw bullets
     bullet_group.update()
