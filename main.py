@@ -99,7 +99,7 @@ class Soldier(pygame.sprite.Sprite):
         pygame.sprite.Sprite.__init__(self)
         self.shoot_cooldown = 0
         self.char_type = char_type
-        self.speed = speed / 3 if char_type == 'enemy' else speed
+        self.speed = speed if char_type == 'player' else speed / 3
         self.direction = 1
         self.flip = False
         self.animation_list = []
@@ -184,9 +184,10 @@ class Soldier(pygame.sprite.Sprite):
 
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
+        self.width = self.image.get_width()
+        self.height = self.image.get_height()
 
         self.health_bar = HealthBar(self.rect.x - 50, self.rect.y - 20, self.health, self.max_health)
-
     def shoot(self):
         if self.shoot_cooldown == 0 and self.ammo > 0:
             self.shoot_cooldown = 20  # Cooldown period before the next shot
@@ -211,10 +212,16 @@ class Soldier(pygame.sprite.Sprite):
                     self.idling_counter = 50
 
                 if not self.idling:
-                    if self.rect.left <= self.patrol_start:
-                        self.patrol_direction = 1
-                    elif self.rect.right >= self.patrol_end:
-                        self.patrol_direction = -1
+                    # Check for collision with walls or edges
+                    if self.rect.left <= self.patrol_start or self.rect.right >= self.patrol_end:
+                        self.patrol_direction *= -1
+
+                    # Check for ground in front of the enemy
+                    front_x = self.rect.centerx + (self.rect.width // 2 + 1) * self.patrol_direction
+                    front_y = self.rect.bottom + 1
+                    front_tile = world.get_tile_at(front_x, front_y)
+                    if front_tile is None or front_tile[1].top > front_y:
+                        self.patrol_direction *= -1
 
                     moving_left = self.patrol_direction == -1
                     moving_right = self.patrol_direction == 1
@@ -299,16 +306,31 @@ class Soldier(pygame.sprite.Sprite):
             self.vel_y += GRAVITY
             dy += self.vel_y
 
-            if self.rect.bottom + dy > SCREEN_HEIGHT - 50:
-                dy = SCREEN_HEIGHT - 50 - self.rect.bottom
-                self.in_air = False
-                self.jumping = False
+            # Check for collision
+            for tile in world.obstacle_list:
+                # Check collision in the x direction
+                if tile[1].colliderect(self.rect.x + dx, self.rect.y, self.rect.width, self.rect.height):
+                    dx = 0
+                    if self.char_type == 'enemy':
+                        self.direction *= -1
+                        self.move_counter = 0
+                # Check for collision in the y direction
+                if tile[1].colliderect(self.rect.x, self.rect.y + dy, self.rect.width, self.rect.height):
+                    # Check if below the
+                    if self.vel_y < 0:
+                        self.vel_y = 0
+                        dy = tile[1].bottom - self.rect.top
+                    # Check if above the
+                    elif self.vel_y >= 0:
+                        self.vel_y = 0
+                        self.in_air = False
+                        self.jumping = False
+                        dy = tile[1].top - self.rect.bottom
 
             self.rect.x += dx
             self.rect.y += dy
 
             self.update_animation()  # Update animation after movement
-
 
     def draw(self):
         if self.alive or not self.death_animation_played:
@@ -351,6 +373,12 @@ class Soldier(pygame.sprite.Sprite):
 class World:
     def __init__(self):
         self.obstacle_list = []
+
+    def get_tile_at(self, x, y):
+        for tile in self.obstacle_list:
+            if tile[1].collidepoint(x, y):
+                return tile
+        return None
 
     def process_data(self, data):
         #iterate through each value in the data file
@@ -497,6 +525,10 @@ class Bullet(pygame.sprite.Sprite):
         # Check if the bullet is off the screen
         if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
             self.kill()
+        # Check for collision with level
+        for tile in world.obstacle_list:
+            if tile[1].colliderect(self.rect):
+                self.kill()
 
         # Update animation
         ANIMATION_COOLDOWN = 50
@@ -519,6 +551,8 @@ class Grenade(pygame.sprite.Sprite):
         self.rect.center = (x, y)
         self.direction = direction
         self.bounce = 0.35
+        self.width = self.image.get_width()
+        self.height = self.image.get_height()
 
     def update(self):
         # Grenade movement
@@ -526,6 +560,17 @@ class Grenade(pygame.sprite.Sprite):
         dx = self.direction * self.speed
         dy = self.vel_y
 
+        # Check for collision with level
+        for tile in world.obstacle_list:
+            # Check collision in the x direction
+            if tile[1].colliderect(self.rect.x + dx, self.rect.y, self.rect.width, self.rect.height):
+                self.direction *= -1
+                dx = self.direction * self.speed
+            # Check for collision in the y direction
+            if tile[1].colliderect(self.rect.x, self.rect.y + dy, self.rect.width, self.rect.height):
+                self.speed *= self.bounce
+                self.vel_y = -self.vel_y * self.bounce
+                dy = 0
         # Check for collision with the ground
         if self.rect.bottom + dy > SCREEN_HEIGHT - 50:
             dy = SCREEN_HEIGHT - 50 - self.rect.bottom
