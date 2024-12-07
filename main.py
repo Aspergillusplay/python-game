@@ -1,10 +1,14 @@
 import pygame
+from pygame import mixer
 import random
 import csv
 import button
 
 # Initialize Pygame
 pygame.init()
+
+# Initialize mixer
+pygame.mixer.init()
 
 # Screen dimensions
 SCREEN_WIDTH = 800
@@ -34,6 +38,17 @@ FPS = 60
 
 pygame.font.init()
 font = pygame.font.Font(None, 36)
+
+# Load sounds and music
+shoot_fx = pygame.mixer.Sound('audio/shoot.wav')
+grenade_fx = pygame.mixer.Sound('audio/grenade.wav')
+jump_fx = pygame.mixer.Sound('audio/jump.wav')
+music_fx = pygame.mixer.Sound('audio/music.mp3')
+music_fx.play(-1, 0, 5000)
+music_fx.set_volume(0.2)
+jump_fx.set_volume(0.2)
+shoot_fx.set_volume(0.2)
+grenade_fx.set_volume(0.5)
 
 # Menu buttons
 start_img = pygame.image.load('img/start_btn.png').convert_alpha()
@@ -123,6 +138,7 @@ class Soldier(pygame.sprite.Sprite):
     def __init__(self, char_type, x, y, scale, speed):
         pygame.sprite.Sprite.__init__(self)
         self.shoot_cooldown = 0
+        self.death_time = None
         self.char_type = char_type
         self.speed = speed if char_type == 'player' else speed / 3
         self.direction = 1
@@ -228,6 +244,7 @@ class Soldier(pygame.sprite.Sprite):
             bullet_group.add(bullet)
             # reduce ammo
             self.ammo -= 1
+            shoot_fx.play()
 
     def update_animation(self):
         ANIMATION_COOLDOWN = 100
@@ -358,8 +375,10 @@ class Soldier(pygame.sprite.Sprite):
                 else:
                     self.image = self.death_list[self.frame_index]
 
+
     def move(self, moving_left, moving_right, jumping):
         screen_scroll = 0
+        level_complete = False  # Initialize level_complete
         if self.alive:
             dx = 0
             dy = 0
@@ -421,10 +440,8 @@ class Soldier(pygame.sprite.Sprite):
                 self.take_damage(self.health)
 
             # Check for collision with exit
-            level_complete = False
             if pygame.sprite.spritecollide(self, exit_group, False):
                 level_complete = True
-
 
             # Check for collision with edge
             if self.char_type == 'player':
@@ -460,6 +477,7 @@ class Soldier(pygame.sprite.Sprite):
                 self.health = 0
                 self.alive = False
                 self.frame_index = 0
+                self.death_time = pygame.time.get_ticks()
                 self.update_time = pygame.time.get_ticks()
 
                 # Drop a random item box upon death
@@ -711,6 +729,7 @@ class Grenade(pygame.sprite.Sprite):
         self.timer -= 1
         if self.timer <= 0:
             self.kill()
+            grenade_fx.play()
             explosion = Explosion(self.rect.centerx, self.rect.centery)
             explosion_group.add(explosion)
             # Deal damage to anyone who is nearby
@@ -808,134 +827,134 @@ while run:
         if exit_button.draw(screen):
             run = False
     else:
-        if player.alive:
-            # Draw background
-            draw_bg()
-            # draw world map
-            world.draw()
+        # Draw background
+        draw_bg()
+        # Draw world map
+        world.draw()
 
-            # Draw health bar
-            health_bar.draw(player.health)
-            player.draw()
-            screen_scroll, level_complete = player.move(moving_left, moving_right, jumping)
-            bg_scroll -= screen_scroll
-            if level_complete:
-                level += 1
-                if level <= MAX_LEVELS:
-                    # Reset game and level
-                    bullet_group.empty()
-                    grenade_group.empty()
-                    explosion_group.empty()
-                    enemy_group.empty()
-                    decoration_group.empty()
-                    water_group.empty()
-                    exit_group.empty()
-                    data_path = f'level/level{level}_data.csv'
-                    world_data = []
-                    for row in range(ROWS):
-                        r = [-1] * COLS
-                        world_data.append(r)
-                    with open(data_path, newline='') as csvfile:
-                        reader = csv.reader(csvfile, delimiter=',')
-                        for x, row in enumerate(reader):
-                            for y, tile in enumerate(row):
-                                world_data[x][y] = int(tile)
-                    world = World()
-                    player, health_bar = world.process_data(world_data)
-                    start_game = False
-                else:
-                    print("You have completed the game!")
-                    run = False
-
-            # Update and draw enemies
-            for enemy in enemy_group:
-                enemy.ai()
-                enemy.update_animation()
-                enemy.draw()
-                enemy.update()
-                enemy.health_bar.draw(enemy.health)
-
-            # Update and draw bullets
-            bullet_group.update()
-            bullet_group.draw(screen)
-
-            # Update and draw grenades
-            grenade_group.update()
-            grenade_group.draw(screen)
-
-            # Update and draw explosions
-            explosion_group.update()
-            explosion_group.draw(screen)
-
-            # Update and draw item boxes
-            item_box_group.update()
-            item_box_group.draw(screen)
-
-            # Update and draw decorations
-            decoration_group.draw(screen)
-            decoration_group.update()
-
-            # Update and draw water
-            water_group.draw(screen)
-            water_group.update()
-
-            # Update and draw exit
-            exit_group.draw(screen)
-            exit_group.update()
-
-            # Check for bullet collisions
-            for bullet in bullet_group:
-                if bullet.char_type == 'player':
-                    for enemy in enemy_group:
-                        if pygame.sprite.collide_rect(bullet, enemy):
-                            print(f"Bullet hit enemy: {bullet.rect}")
-                            enemy.take_damage(35)
-                            bullet.kill()
-                elif bullet.char_type == 'enemy':
-                    if pygame.sprite.collide_rect(bullet, player):
-                        print(f"Bullet hit player: {bullet.rect}")
-                        player.take_damage(10)
-                        bullet.kill()
-
-            # Update player animation
-            player.update_animation()
-
-            # Draw ammo and grenade count
-            draw_ammo(player.ammo, player.max_ammo)
-            draw_grenades(player.grenades, player.max_grenades)
-        else:
-            # Player is dead, show restart button
-            screen.fill(BG)
-            if restart_button.draw(screen):
-                # Clear existing sprite groups
-                item_box_group.empty()
-                enemy_group.empty()
-                explosion_group.empty()
+        # Draw health bar
+        health_bar.draw(player.health)
+        player.draw()
+        screen_scroll, level_complete = player.move(moving_left, moving_right, jumping)
+        bg_scroll -= screen_scroll
+        if level_complete:
+            level += 1
+            if level <= MAX_LEVELS:
+                # Reset game and level
+                bullet_group.empty()
                 grenade_group.empty()
+                explosion_group.empty()
+                enemy_group.empty()
                 decoration_group.empty()
                 water_group.empty()
                 exit_group.empty()
-                bullet_group.empty()
-
-                # Reset game
-                player.alive = True
-                player.health = player.max_health
-                player.ammo = player.max_ammo
-                player.grenades = player.max_grenades
-                player.rect.center = (100, SCREEN_HEIGHT - 130)
-                bg_scroll = 0
+                data_path = f'level/level{level}_data.csv'
                 world_data = []
                 for row in range(ROWS):
                     r = [-1] * COLS
                     world_data.append(r)
-                with open(f'level/level{level}_data.csv', newline='') as csvfile:
+                with open(data_path, newline='') as csvfile:
                     reader = csv.reader(csvfile, delimiter=',')
                     for x, row in enumerate(reader):
                         for y, tile in enumerate(row):
                             world_data[x][y] = int(tile)
                 world = World()
                 player, health_bar = world.process_data(world_data)
-                start_game = True
+                start_game = False
+            else:
+                print("You have completed the game!")
+                run = False
+
+        # Update and draw enemies
+        for enemy in enemy_group:
+            enemy.ai()
+            enemy.update_animation()
+            enemy.draw()
+            enemy.update()
+            enemy.health_bar.draw(enemy.health)
+
+        # Update and draw bullets
+        bullet_group.update()
+        bullet_group.draw(screen)
+
+        # Update and draw grenades
+        grenade_group.update()
+        grenade_group.draw(screen)
+
+        # Update and draw explosions
+        explosion_group.update()
+        explosion_group.draw(screen)
+
+        # Update and draw item boxes
+        item_box_group.update()
+        item_box_group.draw(screen)
+
+        # Update and draw decorations
+        decoration_group.draw(screen)
+        decoration_group.update()
+
+        # Update and draw water
+        water_group.draw(screen)
+        water_group.update()
+
+        # Update and draw exit
+        exit_group.draw(screen)
+        exit_group.update()
+
+        # Check for bullet collisions
+        for bullet in bullet_group:
+            if bullet.char_type == 'player':
+                for enemy in enemy_group:
+                    if pygame.sprite.collide_rect(bullet, enemy):
+                        print(f"Bullet hit enemy: {bullet.rect}")
+                        enemy.take_damage(35)
+                        bullet.kill()
+            elif bullet.char_type == 'enemy':
+                if pygame.sprite.collide_rect(bullet, player):
+                    print(f"Bullet hit player: {bullet.rect}")
+                    player.take_damage(10)
+                    bullet.kill()
+
+        # Update player animation
+        player.update_animation()
+
+        # Draw ammo and grenade count
+        draw_ammo(player.ammo, player.max_ammo)
+        draw_grenades(player.grenades, player.max_grenades)
+
+        if not player.alive:
+            # Show restart button after 3 seconds
+            if pygame.time.get_ticks() - player.death_time > 1500:
+                if restart_button.draw(screen):
+                    # Clear existing sprite groups
+                    item_box_group.empty()
+                    enemy_group.empty()
+                    explosion_group.empty()
+                    grenade_group.empty()
+                    decoration_group.empty()
+                    water_group.empty()
+                    exit_group.empty()
+                    bullet_group.empty()
+
+                    # Reset game
+                    player.alive = True
+                    player.health = player.max_health
+                    player.ammo = player.max_ammo
+                    player.grenades = player.max_grenades
+                    player.rect.center = (100, SCREEN_HEIGHT - 130)
+                    bg_scroll = 0
+                    world_data = []
+                    for row in range(ROWS):
+                        r = [-1] * COLS
+                        world_data.append(r)
+                    with open(f'level/level{level}_data.csv', newline='') as csvfile:
+                        reader = csv.reader(csvfile, delimiter=',')
+                        for x, row in enumerate(reader):
+                            for y, tile in enumerate(row):
+                                world_data[x][y] = int(tile)
+                    world = World()
+                    player, health_bar = world.process_data(world_data)
+                    start_game = True
 
     # Event handling
     for event in pygame.event.get():
@@ -946,11 +965,12 @@ while run:
                 moving_left = True
             if event.key == pygame.K_d:
                 moving_right = True
-            if event.key == pygame.K_SPACE:
+            if event.key == pygame.K_SPACE and start_game:
                 jumping = True
+                jump_fx.play()
             if event.key == pygame.K_ESCAPE:
                 run = False
-            if event.key == pygame.K_g and player.grenades > 0:
+            if event.key == pygame.K_g and player.grenades > 0 and start_game:
                 grenade = Grenade(player.rect.centerx, player.rect.centery, player.direction)
                 grenade_group.add(grenade)
                 player.grenades -= 1
@@ -964,11 +984,12 @@ while run:
             if event.key == pygame.K_SPACE:
                 jumping = False
 
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and player.alive and player.ammo > 0:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and player.alive and player.ammo > 0 and start_game:
             bullet_x = player.rect.centerx + (25 if player.direction == 1 else -25)
             bullet = Bullet('player', bullet_x, player.rect.centery + 12, player.direction, 1.5)
             bullet_group.add(bullet)
             player.ammo -= 1
+            shoot_fx.play()
             print(f"Bullet created at: {bullet.rect}")
 
     # Update the display
